@@ -1,0 +1,95 @@
+#Verificacion de nullos
+SELECT
+  column_name,
+  COUNTIF(column_name IS NULL) AS num_nulos
+FROM
+  `amzon-411119.pruebas.INFORMATION_SCHEMA.COLUMNS`
+WHERE
+  table_name = 'product'
+GROUP BY
+  column_name;
+#Verificacion de tabla review
+SELECT
+  column_name,
+  COUNTIF(column_name IS NULL) AS num_nulos
+FROM
+  `amzon-411119.pruebas.INFORMATION_SCHEMA.COLUMNS`
+WHERE
+  table_name = 'review'
+GROUP BY
+  column_name;
+# Limpieza de tabla product_clean
+WITH
+  product_id AS (
+    SELECT
+      product_id,
+      ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY product_id) AS row_num,
+      product_name,
+      SPLIT(category, '|')[OFFSET(0)] AS category,
+      SPLIT(category, '|')[OFFSET(1)] AS sub_category,
+      discounted_price,
+      actual_price,
+      discount_percentage,
+      REGEXP_REPLACE(about_product, r'[^a-zA-Z ]', '') AS about_product
+    FROM
+      `amzon-411119.pruebas.product`
+  )
+SELECT * EXCEPT (row_num)
+ FROM product_id 
+WHERE
+row_num = 1
+#review_clean
+WITH
+  review_limpia AS (
+  SELECT
+    user_id,
+    REGEXP_REPLACE(user_name, r'[^a-zA-Z ]', '') AS user_name,
+    review_id,
+    REGEXP_REPLACE(review_title, r'[^a-zA-Z ]', '') AS review_title,
+    review_content,
+  IF
+    (COALESCE(img_link, '') <> '', 1, 0) AS img_link,
+  IF
+    (COALESCE(product_link, '') <> '', 1, 0) AS product_link,
+    product_id,
+    ROW_NUMBER() OVER (PARTITION BY product_id ORDER BY product_id) AS row_num,
+    CAST(REPLACE(rating, '|', '3.9') AS FLOAT64) AS rating,
+    IFNULL(rating_count, 0) AS rating_count
+  FROM
+    `amzon-411119.pruebas.review` )
+SELECT
+  * EXCEPT (row_num)
+FROM
+  review_limpia
+WHERE
+  row_num = 1;
+#union de tablas
+SELECT
+ S.*,
+ P.* EXCEPT (product_id)
+FROM
+  amzon-411119.pruebas.product_clean AS S
+LEFT JOIN
+  amzon-411119.pruebas.review_clean AS P
+ON
+  S.product_id = P.product_id
+#tabla_final
+SELECT *,
+  CASE 
+    WHEN rating < 2.9 THEN 'insatisfactorio'
+    WHEN rating < 3.9 THEN 'aceptable'
+    WHEN rating < 4.9 THEN 'superior al promedio'
+    WHEN rating = 5 THEN 'excelente'
+     END AS rating_category,
+  CASE 
+     WHEN rating < 2.9 THEN '2 - 2.9'
+    WHEN rating < 3.9 THEN '3 - 3.9'
+    WHEN rating < 4.9 THEN '4 - 4.9'
+    WHEN rating = 5 THEN '5 '
+     END AS reting_valores,
+  CASE 
+    WHEN compound < 0 THEN 'negativo'
+    WHEN compound = 0 THEN 'neutro'
+    WHEN compound > 0 THEN 'positivo'
+      END AS feeling_category
+FROM `amzon-411119.pruebas.tabla_general`;
